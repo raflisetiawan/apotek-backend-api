@@ -1,50 +1,63 @@
 import { Injectable } from '@nestjs/common';
-// import { Apriori, Itemset, IAprioriResults } from 'node-apriori';
 import { FPGrowth, Itemset as fpItemSet } from 'node-fpgrowth';
 
 @Injectable()
 export class FrequentService {
-  async calculateFrequent(transactions: string[][]) {
-    // const minSupport = 0.4;
-    // const apriori: Apriori<string> = new Apriori<string>(minSupport);
-    // let number = 0;
-    const fpgrowth: FPGrowth<string> = new FPGrowth<string>(0.4);
-    return new Promise<any>((resolve, reject) => {
-      fpgrowth.on('data', (itemset: fpItemSet<string>) => {
-        // Do something with the frequent itemset.
-        // console.log(number++);
+  private fpgrowth: FPGrowth<string>;
+  private supportThreshold: number;
+  private batchSize: number;
 
-        const support: number = itemset.support;
-        const items: string[] = itemset.items;
-        // console.log(support);
-        // console.log(items);
+  constructor() {
+    this.supportThreshold = 0.7;
+    this.batchSize = 1000;
+    this.fpgrowth = new FPGrowth<string>(this.supportThreshold);
+  }
+
+  async calculateFrequent(
+    transactions: string[][],
+  ): Promise<fpItemSet<string>[]> {
+    const filteredTransactions = this.filterInfrequentItems(
+      transactions,
+      this.supportThreshold,
+    );
+
+    const frequentItemsets: fpItemSet<string>[] = [];
+
+    this.fpgrowth.on('data', (itemset: fpItemSet<string>) => {
+      frequentItemsets.push(itemset);
+    });
+
+    const processBatch = async (batch: string[][]) => {
+      await this.fpgrowth.exec(batch);
+    };
+
+    const processBatches = async () => {
+      const batchPromises = filteredTransactions.map((batch) =>
+        processBatch(batch),
+      );
+      await Promise.all(batchPromises);
+      return frequentItemsets;
+    };
+
+    return processBatches();
+  }
+
+  private filterInfrequentItems(
+    transactions: string[][],
+    minSupport: number,
+  ): string[][] {
+    const itemFrequency: Map<string, number> = new Map();
+    transactions.forEach((transaction) => {
+      transaction.forEach((item) => {
+        const frequency = itemFrequency.get(item) || 0;
+        itemFrequency.set(item, frequency + 1);
       });
-      // Event handler for when a frequent itemset is found.
-      // apriori.on('data', (itemset: Itemset<string>) => {
-      //   // Do something with the frequent itemset.
-      //   const support: number = itemset.support;
-      //   console.log(support);
+    });
 
-      //   const items: string[] = itemset.items;
-      //   console.log(items);
-      // });
-      fpgrowth
-        .exec(transactions)
-        .then((itemsets: fpItemSet<string>[]) => {
-          resolve(itemsets);
-          // Returns an array representing the frequent itemsets.
-        })
-        .catch((error) => reject(error));
-      //   // Execute Apriori on the given set of transactions.
-      // apriori
-      //   .exec(transactions)
-      //   .then((result: IAprioriResults<string>) => {
-      //     // Returns both the collection of frequent itemsets and execution time in milliseconds.
-      //     resolve(result);
-      //   })
-      //   .catch((error) => {
-      //     reject(error);
-      //   });
+    transactions.forEach((transaction, index) => {
+      transactions[index] = transaction.filter(
+        (item) => itemFrequency.get(item) >= minSupport,
+      );
     });
   }
 }

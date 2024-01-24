@@ -1,3 +1,4 @@
+// frequent.controller.ts
 import { Controller, Post, Body } from '@nestjs/common';
 import { FrequentService } from './frequent.service';
 
